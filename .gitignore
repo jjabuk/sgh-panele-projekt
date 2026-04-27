@@ -1,9 +1,0 @@
-.venv/
-*.csv
-*.xlsx
-__pycache__/
-.DS_Store
-*.pyc
-.ipynb_checkpoints/
-*.zip
-EXPORT.py
