@@ -1,9 +1,4 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[25]:
-
-
+main_proj_eko_panel
 import numpy as np
 import pandas as pd
 import requests
@@ -11,30 +6,10 @@ import time
 import zipfile
 import eurostat
 
-
-# In[26]:
-
-
-# Pobierz listę zmiennych z API BDL
+# %%
+#dane baza danych API BDL lokalne polskie wiec jesli dla innyc krajow to musimy wziac z eurostat 
 BASE = "https://bdl.stat.gov.pl/api/v1"
-
-# Pobierz pierwszą stronę zmiennych
-response = requests.get(f"{BASE}/variables?lang=pl&format=json&page=0&pageSize=50")
-variables_data = response.json()
-
-# Wyświetl dostępne zmienne
-print(f"Całkowita liczba zmiennych: {variables_data.get('totalRecords', 0)}\n")
-print("Pierwsze 50 zmiennych:\n")
-
-for var in variables_data.get("results", [])[:20]:  # Pokaż tylko 20
-    print(f"ID: {var.get('id')}, Nazwa: {var.get('name', 'brak nazwy')}")
-
-
-# In[27]:
-
-
-BASE = "https://bdl.stat.gov.pl/api/v1"
-
+#kod do importowania wzialem z chata ale widze ze zaczytalo wszystko ok ;) jakbys mogl spojrzec
 def get_bdl_variable(var_id, years, unit_level=3, name="variable"):
     rows = []
 
@@ -65,7 +40,7 @@ def get_bdl_variable(var_id, years, unit_level=3, name="variable"):
                     name: value.get("val")
                 })
 
-        time.sleep(0.25)  # żeby nie uderzać w limity API
+    
 
     return pd.DataFrame(rows)
 
@@ -100,9 +75,7 @@ energia_ratio = get_bdl_variable(
 )
 
 
-# In[28]:
-
-
+# %%
 import eurostat
 import pandas as pd
 
@@ -128,10 +101,7 @@ pop_raw = eurostat_to_long("demo_r_d2jan")
 
 print(gdp_raw.columns)
 
-
-# In[29]:
-
-
+# %%
 def get_geo_col(df):
     for c in df.columns:
         if "geo" in c.lower():
@@ -154,10 +124,7 @@ pop_pl = pop_raw[
     pop_raw[geo_pop].astype(str).str.startswith("PL")
 ].copy()
 
-
-# In[30]:
-
-
+# %%
 from functools import reduce
 
 bdl_frames = [wydatki_900, oze_prod, oze_share, energia_ratio]
@@ -171,10 +138,7 @@ bdl_panel = reduce(
     bdl_frames
 )
 
-
-# In[31]:
-
-
+# %%
 nuts_map = {
     "REGION DOLNOŚLĄSKIE": "PL51",
     "REGION KUJAWSKO-POMORSKIE": "PL61",
@@ -204,17 +168,14 @@ bdl_panel["region_clean"] = (
 
 bdl_panel["geo"] = bdl_panel["region_clean"].map(nuts_map)
 
-
-# In[ ]:
-
-
+# %%
 import pandas as pd
 import requests
 import zipfile
 import io
 import re
 
-# --- 1. Pobranie EDGAR ---
+# teraz idziemy po dane dotyczace emisji CO2 itp z ponizszego linku 
 
 url = "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/EDGAR/datasets/subnational_NUTS2/2025_FT2024_GHG_NUTS2/EDGAR_2025_GHGs_CO2eq_AR5_NUTS2_by_country_sector_1990-2024_b.zip"
 
@@ -233,16 +194,15 @@ print("EDGAR shape:", edgar.shape)
 print("Kolumny EDGAR:")
 print(edgar.columns.tolist())
 
-# --- 2. Znalezienie kolumny z kodem NUTS2 (Subnational code w kolumnie D) ---
 
-geo_col = "Subnational code"
+geo_col = "Subnational code *"
 
 if geo_col not in edgar.columns:
     raise ValueError(f"Nie znaleziono kolumny '{geo_col}'. Dostępne kolumny: {edgar.columns.tolist()}")
 
 print(f"✓ Znaleziono kolumnę geo: {geo_col}")
 
-# --- 3. Zostaw tylko polskie NUTS2 (kody zaczynające się od "PL") ---
+# bierzemy tylko dla PL w kolumnie GEO COL
 
 edgar_pl = edgar[
     edgar[geo_col].astype(str).str.startswith("PL", na=False)
@@ -251,7 +211,7 @@ edgar_pl = edgar[
 print(f"Liczba wierszy dla Polski: {edgar_pl.shape[0]}")
 print(f"Unikalne kody PL: {sorted(edgar_pl[geo_col].unique())}")
 
-# --- 4. Znalezienie kolumn lat 1990-2024 ---
+# tutaj filtr dalej na dane lata i kolumny
 
 year_cols = []
 
@@ -267,7 +227,6 @@ if len(year_cols) == 0:
 
 print(f"Znalezione lata: {sorted([int(str(c).replace('Y_', '')) for c in year_cols])}")
 
-# --- 5. Zamiana wide -> long ---
 
 df_long = edgar_pl.melt(
     id_vars=[geo_col],
@@ -308,19 +267,14 @@ display(panel_emisje.head(10))
 print(f"Shape: {panel_emisje.shape}")
 print(f"Regiony: {sorted(panel_emisje['geo'].unique())}")
 
-
-# In[41]:
-
-
-# przykład: upewnij się, że w EDGAR masz kolumny geo i year
+# %%
 
 import pandas as pd
 import numpy as np
 
-# --- N
 panel = bdl_panel.merge(panel_emisje, on=["geo", "year"], how="left")
 
-# po przygotowaniu gdp_pl, unemp_pl, pop_pl jako geo-year-value:
+# gdp_pl, unemp_pl, pop_pl
 gdp_panel = gdp_pl.rename(columns={geo_gdp: "geo", "value": "gdp"})[
     ["geo", "year", "gdp", "unit"]
 ]
@@ -341,4 +295,153 @@ panel = (
 )
 
 panel.to_csv("panel_zielona_transformacja_nuts2_PL.csv", index=False)
+
+# %%
+panel["wydatki_900_pc"] = panel["wydatki_dzial_900"] / panel["population"]
+panel["log_ghg"] = np.log(panel["ghg_co2eq"])
+panel["log_gdp"] = np.log(panel["gdp"])
+
+panel = panel.sort_values(["geo", "year"])
+panel["wydatki_900_pc_lag1"] = panel.groupby("geo")["wydatki_900_pc"].shift(1)
+
+# %%
+
+#  agregacja danych oraz zostaw tylko obserwacje z kodem POLSKA :) Polska gurom xD 
+
+panel_model = panel.copy()
+
+panel_model = panel_model[
+    panel_model["geo"].astype(str).str.match(r"^PL[0-9]{2}$", na=False)
+].copy()
+
+# konwersja zmiennych zeby byly numeryczne 
+num_cols = [
+    "wydatki_dzial_900",
+    "oze_produkcja",
+    "oze_udzial",
+    "produkcja_do_zuzycia_energii",
+    "ghg_co2eq",
+    "gdp",
+    "unemployment",
+    "population",
+    "wydatki_900_pc",
+    "wydatki_900_pc_lag1"
+]
+
+for col in num_cols:
+    if col in panel_model.columns:
+        panel_model[col] = pd.to_numeric(panel_model[col], errors="coerce")
+
+panel_model["emisje_pc"] = panel_model["ghg_co2eq"] / panel_model["population"]
+
+
+panel_model["gdp_pc"] = panel_model["gdp"] / panel_model["population"]
+
+# logarytmowanie zmiennych log emicje pc i gdp per capita i wydatki gov 
+panel_model["log_emisje_pc"] = np.log(panel_model["emisje_pc"])
+panel_model["log_gdp_pc"] = np.log(panel_model["gdp_pc"])
+panel_model["log_wydatki_900_pc_lag1"] = np.log1p(panel_model["wydatki_900_pc_lag1"])
+
+# sortowanie i duplikaty checking
+panel_model = panel_model.sort_values(["geo", "year"])
+
+
+duplikaty = panel_model.duplicated(["geo", "year"]).sum()
+print("Liczba duplikatów geo-year:", dups)
+
+cols_model = [
+    "geo",
+    "year",
+    "log_emisje_pc",
+    "log_wydatki_900_pc_lag1",
+    "oze_udzial",
+    "produkcja_do_zuzycia_energii",
+    "log_gdp_pc",
+    "unemployment"
+]
+
+print(panel_model[cols_model].isna().sum())
+
+# baza finalnaa
+panel_est = panel_model[cols_model].dropna().copy()
+
+print(panel_est.shape)
+display(panel_est.head())
+
+# %%
+### tu modelujemy i robimy tabele opisowa
+
+panel_model = panel.copy()
+
+panel_model["emisje_pc"] = panel_model["ghg_co2eq"] / panel_model["population"]
+panel_model["gdp_pc"] = panel_model["gdp"] / panel_model["population"]
+
+panel_model["log_emisje_pc"] = np.log(panel_model["emisje_pc"])
+panel_model["log_gdp_pc"] = np.log(panel_model["gdp_pc"])
+panel_model["log_wydatki_900_pc_lag1"] = np.log1p(panel_model["wydatki_900_pc_lag1"])
+
+cols_model = [
+    "geo",
+    "year",
+    "log_emisje_pc",
+    "log_wydatki_900_pc_lag1",
+    "oze_udzial",
+    "produkcja_do_zuzycia_energii",
+    "log_gdp_pc",
+    "unemployment"
+]
+
+panel_est = panel_model[cols_model].dropna().copy()
+
+# tabela opisowa
+desc = panel_est[
+    [
+        "log_emisje_pc",
+        "log_wydatki_900_pc_lag1",
+        "oze_udzial",
+        "produkcja_do_zuzycia_energii",
+        "log_gdp_pc",
+        "unemployment"
+    ]
+].describe().T
+
+display(desc)
+
+# %%
+avg_oze = panel_est.groupby("year", as_index=False)["oze_udzial"].mean()
+
+plt.figure(figsize=(9, 5))
+plt.plot(avg_oze["year"], avg_oze["oze_udzial"], marker="o")
+plt.title("Średni udział OZE w regionach NUTS2")
+plt.xlabel("Rok")
+plt.ylabel("Udział OZE")
+plt.grid(True)
+plt.show()
+
+# %%
+plt.figure(figsize=(8, 5))
+plt.scatter(
+    panel_est["log_wydatki_900_pc_lag1"],
+    panel_est["log_emisje_pc"],
+    alpha=0.7
+)
+plt.title("Wydatki środowiskowe a emisje per capita")
+plt.xlabel("Log opóźnionych wydatków działu 900 per capita")
+plt.ylabel("Log emisji per capita")
+plt.grid(True)
+plt.show()
+
+# %%
+import matplotlib.pyplot as plt
+
+avg_year = panel_est.groupby("year", as_index=False)["log_emisje_pc"].mean()
+
+plt.figure(figsize=(9, 5))
+plt.plot(avg_year["year"], avg_year["log_emisje_pc"], marker="o")
+plt.title("Średni logarytm emisji per capita)
+plt.xlabel("Rok")
+plt.ylabel("Średni log emisji per capita")
+plt.grid(True)
+plt.show()
+
 
